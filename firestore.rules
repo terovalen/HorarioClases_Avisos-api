@@ -1,0 +1,10 @@
+// Reglas de Firestore: los clientes NO acceden nunca. Todo pasa por la API
+// (Admin SDK, que se salta las reglas). Ver firestore.rules en Vercel/Firebase.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
