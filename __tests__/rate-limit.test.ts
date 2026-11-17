@@ -77,6 +77,54 @@ describe('auth-rest: mapeo de errores del proveedor', () => {
     expect(sesion.expiraEnSeg).toBe(3600);
   });
 
+  it('renovar envía la clave en el query y el cuerpo url-encoded', async () => {
+    const falsch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id_token: 't', refresh_token: 'r' }), {
+        status: 200,
+      }),
+    );
+    globalThis.fetch = falsch;
+    await renovar('refresh-token-largo-de-prueba');
+    const [url, init] = falsch.mock.calls[0] as [
+      string,
+      { headers: Record<string, string>; body: string },
+    ];
+    expect(url).toContain('?key=clave-web-de-prueba');
+    expect(init.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+    expect(init.body).toContain('grant_type=refresh_token');
+    expect(init.body).toContain('refresh_token=refresh-token-largo-de-prueba');
+  });
+
+  it('renovar: USER_DISABLED → 403', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(responder('USER_DISABLED', 400));
+    await expect(renovar('refresh-token-largo-de-prueba')).rejects.toMatchObject({
+      estado: 403,
+    });
+  });
+
+  it('renovar: código desconocido → 401 con el mensaje de sesión', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(responder('INVALID_REFRESH_TOKEN'));
+    await expect(renovar('refresh-token-largo-de-prueba')).rejects.toMatchObject({
+      estado: 401,
+      message: 'Sesión expirada, inicia sesión de nuevo',
+    });
+  });
+
+  it('renovar: respuesta sin JSON del proveedor → 401 con el mensaje de sesión', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response('<html>', { status: 502 }));
+    await expect(renovar('refresh-token-largo-de-prueba')).rejects.toMatchObject({
+      estado: 401,
+      message: 'Sesión expirada, inicia sesión de nuevo',
+    });
+  });
+
+  it('renovar: fallo de red → 500 sin detalles', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('sin red'));
+    await expect(renovar('refresh-token-largo-de-prueba')).rejects.toMatchObject({
+      estado: 500,
+    });
+  });
+
   it('fallo de red al llamar al proveedor → 500 sin detalles', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('sin red'));
     await expect(iniciar('a@b.co', 'clave-larga')).rejects.toMatchObject({ estado: 500 });

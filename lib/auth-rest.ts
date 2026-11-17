@@ -35,26 +35,50 @@ export async function iniciar(correo: string, clave: string): Promise<SesionFire
   });
 }
 
-/** Renueva el ID token con el refresh token (grant_type=refresh_token). */
+/** Códigos de error del endpoint de refresco (securetoken). */
+const ERRORE_SESION: Record<string, [number, string]> = {
+  USER_DISABLED: [403, 'La cuenta está deshabilitada'],
+};
+
+/** Renueva el ID token con el refresh token (grant_type=refresh_token).
+ *  La clave web va en el query string y el cuerpo es url-encoded,
+ *  como exige la documentación del endpoint. */
 export async function renovar(
   refreshToken: string,
 ): Promise<Omit<SesionFirebase, 'id' | 'email'>> {
-  const respuesta = await fetch(REFRESH_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      key: claveWeb(),
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    }),
-  });
-  if (!respuesta.ok) throw new ErrorApi(401, 'Sesión expirada, inicia sesión de nuevo');
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${REFRESH_URL}?key=${claveWeb()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }).toString(),
+    });
+  } catch {
+    throw new ErrorApi(500, 'Error interno');
+  }
+  if (!respuesta.ok) throw await errorDeRenovacion(respuesta);
   const datos = (await respuesta.json()) as Record<string, string>;
   return {
     token: datos['id_token'] ?? '',
     refreshToken: datos['refresh_token'] ?? '',
     expiraEnSeg: Number(datos['expires_in'] ?? 3600),
   };
+}
+
+async function errorDeRenovacion(respuesta: Response): Promise<ErrorApi> {
+  let codigo = '';
+  try {
+    const cuerpo = (await respuesta.json()) as { error?: { message?: string } };
+    codigo = (cuerpo.error?.message ?? '').split(':')[0]?.trim() ?? '';
+  } catch {
+    codigo = '';
+  }
+  const mapeado = ERRORE_SESION[codigo];
+  if (mapeado) return new ErrorApi(mapeado[0], mapeado[1]);
+  return new ErrorApi(401, 'Sesión expirada, inicia sesión de nuevo');
 }
 
 async function llamar(
