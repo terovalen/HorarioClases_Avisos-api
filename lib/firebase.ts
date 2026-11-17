@@ -1,8 +1,15 @@
 /** Firebase Admin: la única puerta a Authentication y Firestore.
  *  Claves SOLO por variables de entorno en Vercel, nunca en Git ni en la app. */
-import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
-import { getAuth, type Auth } from 'firebase-admin/auth';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import {
+  cert,
+  getApps,
+  initializeApp,
+  getAuth,
+  getFirestore,
+} from './firebase-admin.cjs';
+import type { App } from 'firebase-admin/app';
+import type { Auth } from 'firebase-admin/auth';
+import type { Firestore } from 'firebase-admin/firestore';
 
 export function firebase(): { db: Firestore; auth: Auth } {
   const existentes = getApps();

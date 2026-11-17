@@ -15,6 +15,31 @@ si no se entiende, no se entrega.
 - **Decisión:** aceptar la configuración y el esqueleto tras revisión manual
   del diff completo por ambos integrantes.
 
+## Entrada 2 · 2026-11-17 · 500 de Firebase en Vercel (ERR_REQUIRE_ESM)
+
+- **Propósito:** corregir el `500` de todas las rutas que usan Firebase
+  (`/api/materia`, `/api/bloque`, `/api/auth/yo`) mientras `/api/health` y
+  `/api/auth/login` respondían bien.
+- **Evidencia:** `/api/health` devolvió `firebase: "no-carga"` con el mensaje
+  `Failed to load external module firebase-admin-…/auth: Error
+[ERR_REQUIRE_ESM]`. El build local empaqueta `firebase-admin` como paquete
+  externo en `.next/node_modules/firebase-admin-<hash>/`, cuyo `package.json`
+  conserva el mapa `exports` con las condiciones `require` (CJS) e `import`
+  (ESM). Vercel corre Node v26.13.1, donde `require()` de un módulo ESM ya no
+  está permitido.
+- **Validación:** reproducción local exacta con Node 24 y
+  `NODE_OPTIONS=--no-experimental-require-module` (mismo hash y mismo error que
+  Vercel). Con el puente CommonJS el error avanza a la siguiente fronteira:
+  `jwks-rsa` (CJS) exige `jose` v6, que es ESM-only; por eso no basta con
+  forzar CJS y hay que fijar la versión de Node. Con Node 24 (que sí admite
+  `require(esm)`) el flujo completo funciona: registro → `PUT /api/materia` →
+  `PUT /api/bloque` (`07:15`/`08:45`) → `GET /api/bloque` → `GET /api/auth/yo`.
+  `npm run check` en verde (cobertura 100 % de sentencias).
+- **Decisión:** (1) `lib/firebase-admin.cjs` como puerta única al Admin SDK para
+  que Turbopack resuelva siempre la variante CJS; (2) `engines.node = "24.x"`
+  en `package.json` para que Vercel use Node 24 en lugar de Node 26; (3) CI
+  actualizado a `node-version: 24`.
+
 ## Casos en que se rechazó o corrigió lo propuesto por la IA (mínimo 3)
 
 1. **Tokens de sesión.** La IA propuso guardar `token` y `refreshToken` en
@@ -32,6 +57,12 @@ si no se entiende, no se entrega.
    incluía dónde inicia sesión el usuario. Se agregó `app/login.tsx` con
    validación y estados de carga/error, sin alterar los requisitos del
    documento.
+5. **Versión de Node en producción.** La IA propuso resolver el `ERR_REQUIRE_ESM`
+   solo con `serverExternalPackages` y con un puente CommonJS. Se corrigió: el
+   error no venía solo de `firebase-admin`, sino de toda su cadena
+   (`jwks-rsa` → `jose` v6, ESM-only). La solución definitiva es fijar
+   `engines.node = "24.x"`; sin eso, Vercel arranca en Node 26 y ninguna ruta
+   con Firebase puede funcionar.
 
 > Los integrantes deben agregar aquí sus propios casos con fecha y evidencia
 > (captura o enlace al diff) a medida que trabajan.
