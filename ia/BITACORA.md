@@ -31,14 +31,18 @@ si no se entiende, no se entrega.
   `NODE_OPTIONS=--no-experimental-require-module` (mismo hash y mismo error que
   Vercel). Con el puente CommonJS el error avanza a la siguiente fronteira:
   `jwks-rsa` (CJS) exige `jose` v6, que es ESM-only; por eso no basta con
-  forzar CJS y hay que fijar la versión de Node. Con Node 24 (que sí admite
-  `require(esm)`) el flujo completo funciona: registro → `PUT /api/materia` →
-  `PUT /api/bloque` (`07:15`/`08:45`) → `GET /api/bloque` → `GET /api/auth/yo`.
+  forzar CJS y hay que hacer compatible toda la cadena. Con `firebase-admin`
+  13.10.0 la cadena queda 100 % CJS (`google-auth-library` 10 → `jwks-rsa` 3 →
+  `jose` 4 con condición `require`) y el flujo completo funciona **incluso sin
+  `require(esm)`**: registro → `PUT /api/materia` → `PUT /api/bloque`
+  (`07:15`/`08:45`) → `GET /api/bloque` → `GET /api/auth/yo` → 200.
   `npm run check` en verde (cobertura 100 % de sentencias).
 - **Decisión:** (1) `lib/firebase-admin.cjs` como puerta única al Admin SDK para
-  que Turbopack resuelva siempre la variante CJS; (2) `engines.node = "24.x"`
-  en `package.json` para que Vercel use Node 24 en lugar de Node 26; (3) CI
-  actualizado a `node-version: 24`.
+  que Turbopack resuelva siempre la variante CJS; (2) `firebase-admin` fijado en
+  `^13.10.0`, cuya cadena de dependencias es CJS y no depende de `require(esm)`
+  (así funciona en Node 22, 24 y 26); (3) `engines.node = "24.x"` en
+  `package.json` para que Vercel use una versión estable y CI actualizado a
+  `node-version: 24`.
 
 ## Casos en que se rechazó o corrigió lo propuesto por la IA (mínimo 3)
 
@@ -60,9 +64,9 @@ si no se entiende, no se entrega.
 5. **Versión de Node en producción.** La IA propuso resolver el `ERR_REQUIRE_ESM`
    solo con `serverExternalPackages` y con un puente CommonJS. Se corrigió: el
    error no venía solo de `firebase-admin`, sino de toda su cadena
-   (`jwks-rsa` → `jose` v6, ESM-only). La solución definitiva es fijar
-   `engines.node = "24.x"`; sin eso, Vercel arranca en Node 26 y ninguna ruta
-   con Firebase puede funcionar.
+   (`jwks-rsa` → `jose` v6, ESM-only). La solución definitiva es una cadena de
+   dependencias 100 % CJS (`firebase-admin` 13) más el puente; con eso la API
+   funciona en Node 22, 24 y 26 sin depender de `require(esm)`.
 
 > Los integrantes deben agregar aquí sus propios casos con fecha y evidencia
 > (captura o enlace al diff) a medida que trabajan.
